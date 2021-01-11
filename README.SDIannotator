@@ -1,0 +1,222 @@
+SDI annotation for Jason Butt and Medea camera streams.
+
+Scott McCue
+Woods Hole Oceanographic Institution
+AOPE/DSL
+December 2014
+
+Introduction
+============
+
+During a lowering of ROV Jason the operations crew monitors many real time
+measurements of environment and vehicle status. One long-used method overlays
+a variety of these real time measurements onto video monitors on the front wall
+of the Jason Control Van, where crew and science watchstanders can view them
+readily.
+
+By the end of 2014 Control Van video infrastructure was transitioned to digital
+technology (SDI, HDSDI). However, the historical system was custom-built for
+analog video technology (e.g. S-video). This system was built around custom
+boards and required a software compilation environment that made it difficult
+for at-sea crews to adapt to the constant changes routinely made to the Control
+Van infrastructure.
+
+In the move to a digital infrastructure, commercial text inserters for
+SDI/HDSDI were purchased from Fougerolle. The units take in an un-annotated
+digital video stream, receive annotation instructions via UDP/IP communication,
+and produce an annotated digital video stream. 
+
+This document describes the software application developed to create the
+annotation instructions for the text inserters. The application is comprised
+of Python language scripts: these are more easily modified than the previous
+system; they are also easily installed on generic Ubuntu linux computers.
+Maintenance and adaptation are significantly simpler than the prioor system.
+
+The application implements annotation of two Jason control van streams:
+
+1. Jason ButtCam, typically used to monitor the tether between Jason and Medea;
+or, to monitor the position relation between Jason and Medea in an descent,
+ascent, or transit configuration.
+
+2. Medea DownCam, typically used to monitor Jason as it works on the sea bottom
+underneath Medea.
+
+Additional Reading
+==================
+
+1. Fougeroole User Manual: TIxx Real Time HD Text-Keyer v 1.15
+2. Fougerolle Manual: Text-Keyer Tool TIxx, v1.13. 
+3. Fougerolle Manual: Text-Inserter Ethernet Protocol v1.30
+
+Jason Van Architecture
+======================
+
+When installed for operations, Jason computers are connected to a 
+dedicated ethernet network. The central and most important of these
+computers is called 'topside'. It runs Jason's operating system and
+does most of the reporting of Jason's sensors to other equipment. The
+primary method of reporting is on the network via UDP packets on a
+known port. The formats of these packets vary with sensor or data type.
+To use the reports, other equipment must receive and perhaps parse the
+UDP broadcasts.
+
+Application
+===========
+
+'annot_controlGUI.py' is an application that converts the information
+broadcast by the topside computer into instructions that place text
+on the ButtCam and DownCam streams. Communication in to and out of the
+Fougerolle text inserters is all via UDP networking.
+
+At initial release, 'annot_controlGUI.py' consists of the following modules
+
+1. annot_controlGUI.py: the primary routine, contains __main__.
+2. annot.ini: configuration file, where users can control some behavior.
+3. annot_messages.py: implements Fougerolle message objects
+4. parse_routines.py: implements routines that dissect Jason UDP messages
+5. time_routines.py: implements formatting functions for time strings
+6. udp_receiver.py: implements objects to pull in Jason UDP messages
+
+Users will generally interact with two of these modules: annot.ini and
+annot_controlGUI.py. Other modules can be modified to alter annotation
+content or to handle new data types.
+
+annot.ini is where the user can change parameters associated with the network
+or with placement of strings onto the ButtCam or DownCam images footprints.
+
+The application can run as a command-line program by invoking it in a unix
+shell, or by double-clicking a desktop item that invokes the command line.
+
+Note: the application was developed on an Ubuntu 10.04 system.
+
+prompt% /home/scotty/src/SDIannotator/annot_controlGUI.py
+
+Specifications
+===============
+
+Note: Delta Depth is computed by annot_controlGUI and is Medea depth
+subtracted from Jason depth. When Medea depth is greater than Jason's,
+a negative delta is shown on front wall monitors.
+
+Medea DownCam Layout
+============================================================================
+= Top Row:								   =
+= Medea Altitude                 Jason Heading                Delta Depth  =
+= 				       			      	    	   =
+= Near Bottom Row:							   =
+= Medea Depth		       Medea Heading		    Homer Guidance =
+= Bottom Row:		       	     			    	  	   =
+= Cabled Temperature Module T 						   =
+============================================================================
+
+Jason ButtCam Layout
+============================================================================
+= Top Row:								   =
+= Lowering ID                    Date                         Time	   =
+= 	   			 			      		   =
+= Near Bottom Row							   =
+= Cabled Temp Module T  Optode: O2 (umolar)+Temp (C)  Homer Guidance	   =
+= Bottom Row: 	     		   		      	    		   =
+= Jason Depth                                                  Delta Depth =
+============================================================================
+
+
+Utilized Jason UDP Messages
+===========================
+
+Jason Data String (JDS)
+Medea Data String (MDS)
+Origin Data Record (ODR)
+Cabled Temp Module (CTM)
+Doppler Altitude (DPA) created by Howland Aug 2014 (from topside) Pending.
+Homer rebroadcasts*
+Optode rebroadcasts from appropriately configured 'dsLog' on 198.17.154.201*
+ 
+* see Special Cases
+
+Annotation Parameters
+=====================
+
+Fougerolle Font Size Specification = 7
+Fougerolle Zone Color Spec = 8
+Fougerolle Zone Transparency Spec = 8
+Fougerolle Font Transparency Spec = 8
+
+DownCam: "med_channel" = I/O #1 on rackmount unit
+-------------------------------------------------
+100% background transparency (text only), white letters
+
+Fougerolle Font Color Spec = 7
+
+ButtCam: "butt_channel" = I/O #2 on rackmount unit
+--------------------------------------------------
+100% background transparency (text only), black letters
+
+Fougerolle Font Color Spec = 0
+
+
+Generalized Annotation Protocol
+===============================
+
+With the receipt of each of the aforementioned Jason messages, a signal
+is generated that causes several steps to be implemented: the message
+is parsed, yielded text fields are updated, and all relevant annotation
+channels and zones are updated with a sequence of Fougerolle-protocol
+messages that update channel/zone content.
+
+For each parameter (one parameter per channel/zone), the sequence of
+messages to the text inserter is:
+
+1. message type 21 ==> Font size
+2. message type 22 ==> Zone x, y screen coordinates
+3. message type 25 ==> Zone color and transparency spec
+4. message type 24 ==> Font color and transparency spec
+5. message type 27 ==> unknown
+6. message type 20 ==> Text string to be shown
+
+
+Special Cases
+=============
+
+Two sensor systems are handled in a different manner than most.
+
+Optode (currently provided by the science party)
+-----------
+
+The annot_controlGUI application is set up is handle measurements from
+Aanderra model 4330 optodes. ROV Jason does not currently possess one of
+these sensors, and makes use of optode (OOS) messages when a unit has been
+provided by the science party. We have made this accomodation because the
+science party often asks for this type of sensor to be inserted into vent
+flows of heated water. It is important to have temperature readings shown
+forthrightly so that Jason's pilot can quickly pull the optode probe out of
+water that is hotter than unit specs allow.
+
+Optode measurements are sent from depth via serial comms. In the Control Van
+the serial stream is converted by a Moxa unit from serial to UDP format
+and is directed via dedicated UDP socket to the data logging host called
+'dlog1'. 'dlog1' runs an application called 'dsLog' that collects a variety
+of similarly delivered data types. Collection behavior is controlled by a
+configuration file (e.g. jason.ini) that specifies how each data type is to
+be recognized and treated.
+
+'dsLog' can be configured to rebroadcast incoming UDP packets to a different
+UDP socket for other hosts/applications to use. This is done for OOS packets,
+which are then pulled by 'annot_controlGUI'.
+
+Homer
+-----
+
+A 'homer' is a range and direction system with several components: the
+transponder, installed on ROV-independent equipment before it was deployed
+from the ship; the range and direction unit, mounted on Jason; a software
+application running externally to 'annot-controlGUI'.
+
+When ROV and transponder are close enough for acoustic communication, the
+system produces a UDP packet with string that includes transponder ID,
+separation range, and crude direction (front, port, or starboard). When
+they are NOT in range the system produces a packet without information.
+
+'annot_controlGUI' examines homer UDP messages and causes the display of
+range (interger meters) and direction('^^', '<<', or '>>') info when available,
+or blanks the information ('--') when it is not. 
